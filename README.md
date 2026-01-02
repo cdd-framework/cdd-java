@@ -1,62 +1,94 @@
 # CDD Framework - Java Adapter
 
-The Cloud Detection & Defense (CDD) Java adapter allows you to integrate security audits directly into your JVM-based applications. It leverages a high-performance **Rust core** via native binaries.
+The Cloud Detection & Defense (CDD) Java adapter allows you to integrate cyber-security audits directly into your JVM-based applications.
 
-## 1. Getting Started & Installation
+It acts as a **smart wrapper** around the **Ratel Core** (Rust), ensuring high-performance execution without requiring your users to install external binaries manually.
 
-### Dependency
-Add the following dependency to your `pom.xml` (hosted on GitHub Packages):
+## Installation
+
+Add the dependency to your `pom.xml` (hosted on GitHub Packages or Maven Central):
 
 ```xml
 <dependency>
     <groupId>io.github.cddframework</groupId>
     <artifactId>cdd-java</artifactId>
-    <version>0.4.0-alpha.3</version>
+    <version>0.5.0-alpha.1</version>
 </dependency>
 ```
 
-## Installation & Lifecycle
-The framework is designed to be Zero-Config:
-- Auto-Extraction: Upon the first execution, the library automatically detects your OS (Windows, Linux, or macOS) and extracts the required Rust binaries and Ratel rules into ~/.cdd/.
-- Auto-Configuration: If you are using Spring Boot, the CDDEngine bean is automatically registered and ready for injection.
+## How it Works
+The framework follows a "Binary Pivot" architecture:
 
-## Basic Execution
-To run a standard security audit on a target URL:
+Auto-Extraction: Upon first execution, the library detects the OS (Windows, Linux, macOS) and extracts the embedded ratel-cli binary to ~/.ratel/bin/.
+
+Standard Layout: It enforces Maven/Gradle standards by placing security scenarios in src/test/resources/ratel/.
+
+Isolation: The audit runs in a separate process, ensuring your JVM memory remains unpolluted.
+
+## Usage
+The workflow is divided into two phases: Initialization and Execution.
+
+### 1. Initialization
+Run this once to generate the default security scenario. It automatically detects if you are in a Maven/Gradle project.
+
 ```Java
-@Autowired
-private CDDEngine engine;
 
-public void runSecurityCheck() {
-    engine.executeAudit("http://localhost:8080");
+import io.github.cddframework.CDD;
+
+public class SetupAudit {
+    public static void main(String[] args) {
+        // Generates src/test/resources/ratel/security.ratel
+        CDD.init(); 
+        System.out.println("Security scenario created.");
+    }
 }
 ```
 
-## 2. Ratel: The Fluent API Evolution
-In version 0.4.0-alpha.3, we introduced Ratel, a common language for security instructions shared across our Java, Python, and Node.js adapters.
+### 2. Configuration (The Ratel DSL)
+Instead of writing Java code to configure the scan, you edit the generated .ratel file. This separates configuration from code, allowing security experts to tweak rules without recompiling the Java app.
 
-Ratel moves security from a passive check to an offensive defense strategy using a "concentric circles" approach.
-## New Core Components
+File: src/test/resources/ratel/security.ratel
 
-## New Core Components
+```Code snippet
 
-| Component | Purpose |
-| :--- | :--- |
-| `CDD.java` | The static entry point for the Fluent API. It provides a clean, unified way to start a scan. |
-| `ScanBuilder.java` | A builder pattern implementation that allows you to configure your scan strategy (e.g., adding scopes or ignoring rules). |
-| `ScanScope.java` | An Enum defining the audit perimeter: `KERNEL` (15 core hygiene tests) and `TERRITORY` (15 infrastructure exposure tests). |
-| `OnFailure.java` | Defines the policy when a vulnerability is found: `CONTINUE`, `LOG_ONLY`, or `FAIL_BUILD` (perfect for CI/CD). |
+SCENARIO "Production Access Audit"
+TARGET "http://localhost:8080"
 
-## Advanced Usage with Ratel
-Ratel allows you to express your security intentions with human-readable code:
-```java
-import io.github.cddframework.*;
+// Define the perimeter
+WITH SCOPE KERNEL
+WITH SCOPE TERRITORY
 
-CDD.scan("http://localhost:8080")
-   .withScope(ScanScope.KERNEL)
-   .withScope(ScanScope.TERRITORY)
-   .ignore("FAVICON_FINGERPRINT")
-   .onFailure(OnFailure.FAIL_BUILD)
-   .run();
+// Custom exclusions
+IGNORE "FAVICON_FINGERPRINT"
 ```
 
-Part of the CDD-Framework organization.
+### 3. Execution (Runtime or Tests)
+You can trigger the audit anywhere: in a standard main method, a Spring Boot CommandLineRunner, or a JUnit test.
+
+Example with Spring Boot:
+
+```Java
+
+@SpringBootApplication
+public class ClientApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ClientApplication.class, args);
+    }
+
+    @Bean
+    public CommandLineRunner securityCheck() {
+        return args -> {
+            System.out.println("🚀 Starting Security Audit...");
+            
+            // Executes the binary using the local .ratel file
+            CDD.run(); 
+        };
+    }
+}
+```
+
+## Integration with CI/CD
+Since cdd-java wraps the CLI, exit codes are propagated. If the audit fails (vulnerabilities found), CDD.run() will log the error, and you can catch the state to fail your build pipeline if necessary.
+
+Part of the CDD-Framework organization
