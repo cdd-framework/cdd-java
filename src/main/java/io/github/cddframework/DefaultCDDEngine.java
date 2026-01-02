@@ -2,122 +2,95 @@ package io.github.cddframework;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-
+import java.nio.file.*;
 import org.springframework.stereotype.Service;
 import lombok.extern.slf4j.Slf4j;
-import tools.jackson.databind.ObjectMapper;
 
-/**
- * Main implementation of the CDD engine
- * Manages the automatic installation of the Rust binary and Ratel rules at startup.
- */
 @Slf4j
 @Service
 public class DefaultCDDEngine implements CDDEngine {
 
     private final Path workingDir;
     private final String binaryName;
+    private Path binaryPath;
 
     public DefaultCDDEngine() {
-
-        this.workingDir = Paths.get(System.getProperty("user.home"), ".cdd");
+        // Uses the user directory to store the extracted binary
+        this.workingDir = Paths.get(System.getProperty("user.home"), ".ratel");
         this.binaryName = determineBinaryName();
         
         try {
             initializeEnvironment();
         } catch (IOException e) {
-            log.error("Failed to initialize Ratel environment", e);
-            throw new RuntimeException("Ratel initialization failed", e);
+            throw new RuntimeException("Ratel CLI initialization failed", e);
         }
     }
 
-    /**
-     * Prepares the file system: creates the folders and extracts the necessary resources.
-     */
     private void initializeEnvironment() throws IOException {
         Files.createDirectories(workingDir.resolve("bin"));
-        Files.createDirectories(workingDir.resolve("ratel"));
+        this.binaryPath = workingDir.resolve("bin").resolve(binaryName);
 
-        // Installation of the Rust binary
-        installResource("/bin/" + binaryName, workingDir.resolve("bin").resolve(binaryName), true);
+        // Extraction of the binary from the JAR to ~/.ratel/bin/
+        // This ensures that the version embedded in the JAR is used
+        installResource("/bin/" + binaryName, binaryPath);
         
-        // Installation of the Ratel repositories (JSON)
-        installResource("/ratel/kernel.json", workingDir.resolve("ratel/kernel.json"), false);
-        installResource("/ratel/territory.json", workingDir.resolve("ratel/territory.json"), false);
-        
-        log.info("Ratel environment initialized at: {}", workingDir);
+        log.info("Ratel CLI ready at: {}", binaryPath);
     }
 
+    // Command: ratel-cli init
+    public void initProject() {
+        runRatelCommand("init");
+    }
+
+    // Command: ratel-cli run tests/ratel/security.ratel
     @Override
     public void executeAudit(String targetUrl) {
-        Path binaryPath = workingDir.resolve("bin").resolve(binaryName);
-        
+        // Note: targetUrl is ignored here because the URL is defined in the .ratel file
+        // We could use it to override the config if ratel-cli supported it (e.g., --target X)
+        log.info("Executing audit using local scenario...");
+        runRatelCommand("run", "src/test/resources/ratel/security.ratel"); 
+    }
+
+    private void runRatelCommand(String... args) {
         try {
-            log.info("Ratel is hunting on: {}", targetUrl);
-
-            // Execution of the Rust binary. Logs are inherited to show real-time output.
-            Process process = new ProcessBuilder(binaryPath.toString(), targetUrl)
-                    .inheritIO()
-                    .start();
-
-            if (!process.waitFor(5, TimeUnit.MINUTES)) {
-                process.destroyForcibly();
-                log.error("Audit timed out after 5 minutes.");
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command().add(binaryPath.toString());
+            for (String arg : args) {
+                pb.command().add(arg);
+            }
+            
+            // Redirection of the binary output to the Java console
+            pb.inheritIO(); 
+            
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            
+            if (exitCode != 0) {
+                log.error("Ratel command failed with exit code: {}", exitCode);
+                // We do not throw an exception to allow the user to see the binary logs
             }
         } catch (Exception e) {
-            log.error("CDD Engine Execution Error", e);
+            log.error("Failed to execute Ratel command", e);
+            throw new RuntimeException("Audit execution failed", e);
         }
     }
 
-    @Override
-    public void executeAudit(String targetUrl, List<ScanScope> scopes, List<String> ignoredRules, OnFailure failurePolicy) {
-        try {
-            Map<String, Object> payload = Map.of(
-                "target_url", targetUrl,
-                "scopes", scopes,
-                "ignored_rules", ignoredRules,
-                "failure_policy", failurePolicy.name()
-            );
-            String jsonArg = new ObjectMapper().writeValueAsString(payload);
-            Path binaryPath = workingDir.resolve("bin").resolve(binaryName);
-            Process process = new ProcessBuilder(binaryPath.toString(), jsonArg)
-                    .inheritIO()
-                    .start();
-
-            process.waitFor(5, TimeUnit.MINUTES);
-        } catch (Exception e) {
-            log.error("Ratel Execution Error", e);
-        }
-    }
-
-
-    /**
-     * Extracts a resource (binary / json file) from the JAR to the local file system.
-     */
-    private void installResource(String resourcePath, Path targetPath, boolean isExecutable) throws IOException {
+    private void installResource(String resourcePath, Path targetPath) throws IOException {
+        // Extraction with overwrite to update the binary if the JAR version changes
         try (InputStream is = getClass().getResourceAsStream(resourcePath)) {
             if (is == null) {
-                log.warn("Resource not found in JAR: {}", resourcePath);
-                return;
+                throw new IOException("Binary not found in JAR resources: " + resourcePath);
             }
             Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            if (isExecutable) {
-                targetPath.toFile().setExecutable(true);
-            }
+            targetPath.toFile().setExecutable(true);
         }
     }
 
     private String determineBinaryName() {
         String os = System.getProperty("os.name").toLowerCase();
-        if (os.contains("win")) return "cdd-core-win.exe";
-        if (os.contains("mac")) return "cdd-core-macos";
-        return "cdd-core-linux";
+        // Names aligned with the standard installation
+        if (os.contains("win")) return "ratel.exe";
+        if (os.contains("mac")) return "ratel";
+        return "ratel";
     }
 }
