@@ -11,7 +11,7 @@
 	</parent>
 	<groupId>io.github.cddframework</groupId>
 	<artifactId>cdd-java</artifactId>
-	<version>0.5.0-alpha.1</version>
+	<version>0.5.0-alpha.2</version>
 	<name>cdd-java</name>
 	<description>Java adapter for the CDD (Cyberattack-Driven Development) framework. Provides an encapsulated engine to execute high-performance security audits via a native Rust core.</description>
 	<url />

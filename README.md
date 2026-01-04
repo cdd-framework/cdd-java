@@ -1,4 +1,4 @@
-# CDD Framework - Java Adapter
+# CDD Framework - Java Adapter (v0.5.0-alpha.2)
 
 The Cloud Detection & Defense (CDD) Java adapter allows you to integrate cyber-security audits directly into your JVM-based applications.
 
@@ -12,7 +12,7 @@ Add the dependency to your `pom.xml` (hosted on GitHub Packages or Maven Central
 <dependency>
     <groupId>io.github.cddframework</groupId>
     <artifactId>cdd-java</artifactId>
-    <version>0.5.0-alpha.1</version>
+    <version>0.5.0-alpha.2</version>
 </dependency>
 ```
 
@@ -86,6 +86,22 @@ public class ClientApplication {
         };
     }
 }
+```
+
+## Update the package
+
+Update the pom.xml with the new version
+
+Run command
+```java
+./mvn clean package
+./mvn clean install
+```
+
+## Deploy the package
+
+```
+./mvn deploy
 ```
 
 ## Integration with CI/CD
